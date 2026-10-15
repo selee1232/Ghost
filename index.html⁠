@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>أداة التوليد الذكية - لايف ستايل</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; font-family: 'Cairo', sans-serif; margin: 0; padding: 0; touch-action: none; }
+        body { background-color: #1a1a1a; display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
+        
+        .preview-area { flex: 1; display: flex; justify-content: center; align-items: center; padding-bottom: 220px; position: relative; }
+        canvas { max-width: 100%; max-height: 100%; box-shadow: 0 0 25px rgba(0,0,0,0.5); object-fit: contain; background: white; border-radius: 8px; }
+
+        .controls { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(255, 255, 255, 0.95); padding: 15px 20px; border-top-left-radius: 20px; border-top-right-radius: 20px; box-shadow: 0 -5px 20px rgba(0,0,0,0.1); z-index: 10; display: flex; flex-direction: column; gap: 10px; }
+        
+        textarea { width: 100%; padding: 12px; border: 2px solid #ccc; border-radius: 10px; font-size: 14px; outline: none; background: #fff; resize: none; line-height: 1.5; }
+        textarea:focus { border-color: #4F46E5; }
+        
+        .buttons-row { display: flex; gap: 10px; }
+        .btn { flex: 1; padding: 12px; text-align: center; border-radius: 10px; font-weight: 900; border: none; font-size: 15px; cursor: pointer; color: white; transition: 0.2s; }
+        .btn-generate { background: #000000; }
+        .btn-generate:active { transform: scale(0.95); }
+        .btn-save { background: #4F46E5; }
+
+        .loading { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 50; justify-content: center; align-items: center; flex-direction: column; color: white; font-weight: bold; font-size: 16px; text-align: center; padding: 20px; }
+        .spinner { border: 4px solid rgba(255,255,255,0.3); border-top: 4px solid #fff; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .save-modal { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.95); z-index: 999; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+        .save-modal img { max-width: 100%; max-height: 70vh; border-radius: 12px; margin-bottom: 20px; pointer-events: auto; }
+        .save-modal p { color: white; text-align: center; font-size: 18px; margin-bottom: 20px; font-weight: bold; }
+        .btn-close { background: #ef4444; color: white; padding: 12px 30px; font-size: 16px; border-radius: 30px; border: none; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="preview-area">
+        <canvas id="canvas" width="1080" height="1920"></canvas>
+    </div>
+
+    <div class="controls">
+        <textarea id="mainInput" rows="3" placeholder="الصق النص هنا... تأكد أن السطر الأخير هو الرمز فقط" oninput="processText(); drawCanvas();">حشوة تملأ فراغ مقدمة الحذاء 👟
+تنحط قدام الأصابع إذا المقاس واسع وتخفف الفراغ
+hsid288</textarea>
+        
+        <div class="buttons-row">
+            <button class="btn btn-generate" onclick="generateImage()">توليد التصميم</button>
+            <button class="btn btn-save" onclick="showSaveModal()">تجهيز الحفظ</button>
+        </div>
+    </div>
+
+    <div class="loading" id="loadingScreen">
+        <div class="spinner"></div>
+        <p id="loadingText">جاري التجهيز...</p>
+    </div>
+
+    <div class="save-modal" id="saveModal">
+        <p>✨ اكتمل التصميم ✨<br><br>اضغط مطولاً على الصورة لحفظها في الاستديو</p>
+        <img id="finalImgOutput" src="" alt="صورة جاهزة">
+        <button class="btn-close" onclick="closeSaveModal()">رجوع للأداة</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let generatedImg = new Image();
+        generatedImg.crossOrigin = "anonymous";
+        
+        let adTextLines = [];
+        let productCode = "";
+
+        let state = {
+            textY: 300,
+            imgScale: 1,
+            imgX: 540,
+            imgY: 1440 
+        };
+
+        function processText() {
+            const fullText = document.getElementById('mainInput').value.trim();
+            const lines = fullText.split('\n').filter(line => line.trim() !== '');
+            
+            if(lines.length > 1) {
+                productCode = lines.pop().trim();
+                adTextLines = lines;
+            } else {
+                adTextLines = lines;
+                productCode = "";
+            }
+        }
+
+        function drawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // الخلفية العلوية بيج
+            ctx.fillStyle = "#E8DCC8";
+            ctx.fillRect(0, 0, canvas.width, canvas.height / 2);
+
+            // صورة المنتج
+            if (generatedImg.src && generatedImg.complete && generatedImg.naturalWidth !== 0) {
+                const w = generatedImg.width * state.imgScale;
+                const h = generatedImg.height * state.imgScale;
+                ctx.drawImage(generatedImg, state.imgX - (w/2), state.imgY - (h/2), w, h);
+            } else {
+                ctx.fillStyle = "#FFFFFF";
+                ctx.fillRect(0, canvas.height / 2, canvas.width, canvas.height / 2);
+                ctx.font = `700 40px Cairo`;
+                ctx.fillStyle = "#cccccc";
+                ctx.textAlign = "center";
+                ctx.fillText("سيتم عرض المنتج هنا", canvas.width / 2, canvas.height * 0.75);
+            }
+
+            // النصوص العلوية
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = "#111111";
+            const lineHeight = 100;
+            
+            adTextLines.forEach((line, index) => {
+                ctx.font = index === 0 ? "900 65px Cairo" : "700 55px Cairo"; 
+                ctx.fillText(line, canvas.width / 2, state.textY + (index * lineHeight));
+            });
+
+            // المربع الأسود للرمز
+            if(productCode !== "") {
+                const finalCodeString = `( رقم القطعة ${productCode} )`;
+                const codeY = state.textY + (adTextLines.length * lineHeight) + 60;
+                ctx.font = "700 50px Cairo";
+                
+                const textMetrics = ctx.measureText(finalCodeString);
+                const boxWidth = textMetrics.width + 60;
+                const boxHeight = 90;
+                const boxX = (canvas.width - boxWidth) / 2;
+                const boxY = codeY - (boxHeight / 2) + 5;
+
+                ctx.fillStyle = "#000000";
+                ctx.beginPath();
+                ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 20);
+                ctx.fill();
+
+                ctx.fillStyle = "#FFFFFF";
+                ctx.fillText(finalCodeString, canvas.width / 2, codeY);
+            }
+        }
+
+        async function generateImage() {
+            processText();
+            if(adTextLines.length === 0) return alert("الرجاء إدخال النص!");
+
+            const loadingScreen = document.getElementById('loadingScreen');
+            const loadingText = document.getElementById('loadingText');
+            loadingScreen.style.display = 'flex';
+            
+            try {
+                loadingText.innerHTML = "ترجمة النص للذكاء الاصطناعي...<br>⏳";
+                let englishPrompt = "Product on a wooden table, lifestyle";
+                try {
+                    const textToTranslate = adTextLines.join(' ');
+                    const transRes = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(textToTranslate)}&langpair=ar|en`);
+                    const transData = await transRes.json();
+                    if(transData.responseData.translatedText) englishPrompt = transData.responseData.translatedText;
+                } catch(e) {
+                    console.log("Translation fallback");
+                }
+
+                loadingText.innerHTML = "توليد الصورة...<br>🎨";
+                
+                const aiPrompt = englishPrompt + ", product lifestyle photography, placed on a wooden table, realistic, warm soft lighting";
+                const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(aiPrompt)}?width=1080&height=960&nologo=true&seed=${Math.floor(Math.random() * 10000)}`;
+                
+                const response = await fetch(imageUrl);
+                if (!response.ok) throw new Error("Image fetch failed");
+                const imageBlob = await response.blob();
+                const objectURL = URL.createObjectURL(imageBlob);
+                
+                generatedImg.onload = () => {
+                    const targetW = canvas.width;
+                    const targetH = canvas.height / 2;
+                    state.imgScale = Math.max(targetW / generatedImg.width, targetH / generatedImg.height);
+                    state.imgX = canvas.width / 2;
+                    state.imgY = (canvas.height / 2) + (targetH / 2);
+                    
+                    drawCanvas();
+                    loadingScreen.style.display = 'none';
+                };
+                
+                generatedImg.src = objectURL;
+                
+            } catch (error) {
+                alert("حدث خطأ في الاتصال. يرجى المحاولة مرة أخرى.");
+                loadingScreen.style.display = 'none';
+            }
+        }
+
+        // --- التحكم باللمس والسحب ---
+        let isDragging = false;
+        let activeObj = null; 
+        let startX, startY;
+        let initialPinchDistance = null;
+        let initialObjScale = 1;
+
+        function getTouchPos(evt, index = 0) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = evt.touches ? evt.touches[index].clientX : evt.clientX;
+            const clientY = evt.touches ? evt.touches[index].clientY : evt.clientY;
+            return {
+                x: (clientX - rect.left) / rect.width * canvas.width,
+                y: (clientY - rect.top) / rect.height * canvas.height
+            };
+        }
+
+        function getDistance(touches) {
+            const dx = touches[0].clientX - touches[1].clientX;
+            const dy = touches[0].clientY - touches[1].clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function handleStart(evt) {
+            if(evt.target.tagName.toLowerCase() !== 'canvas') return;
+            evt.preventDefault();
+            const pos = getTouchPos(evt);
+            
+            activeObj = (pos.y < canvas.height / 2) ? 'text' : 'img';
+            
+            if (evt.touches && evt.touches.length === 2) {
+                initialPinchDistance = getDistance(evt.touches);
+                initialObjScale = state.imgScale;
+            } else {
+                isDragging = true;
+                startX = pos.x;
+                startY = pos.y;
+            }
+        }
+
+        function handleMove(evt) {
+            if (!activeObj || evt.target.tagName.toLowerCase() !== 'canvas') return;
+            evt.preventDefault();
+
+            if (evt.touches && evt.touches.length === 2 && initialPinchDistance && activeObj === 'img') {
+                const newDistance = getDistance(evt.touches);
+                const scaleDiff = newDistance / initialPinchDistance;
+                state.imgScale = initialObjScale * scaleDiff;
+                drawCanvas();
+            } else if (isDragging) {
+                const pos = getTouchPos(evt);
+                const dx = pos.x - startX;
+                const dy = pos.y - startY;
+
+                if (activeObj === 'text') {
+                    state.textY += dy; 
+                } else if (activeObj === 'img') {
+                    state.imgX += dx;
+                    state.imgY += dy;
+                }
+
+                startX = pos.x;
+                startY = pos.y;
+                drawCanvas();
+            }
+        }
+
+        function handleEnd(evt) {
+            isDragging = false;
+            initialPinchDistance = null;
+            activeObj = null;
+        }
+
+        canvas.addEventListener('touchstart', handleStart, {passive: false});
+        canvas.addEventListener('touchmove', handleMove, {passive: false});
+        canvas.addEventListener('touchend', handleEnd, {passive: false});
+        canvas.addEventListener('mousedown', handleStart);
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleEnd);
+
+        function showSaveModal() {
+            try {
+                const dataURL = canvas.toDataURL('image/jpeg', 0.95);
+                document.getElementById('finalImgOutput').src = dataURL;
+                document.getElementById('saveModal').style.display = 'flex';
+            } catch(e) {
+                alert("لم يتمكن النظام من حفظ الصورة. يرجى التأكد من التوليد أولاً.");
+            }
+        }
+
+        function closeSaveModal() {
+            document.getElementById('saveModal').style.display = 'none';
+        }
+
+        document.fonts.ready.then(() => {
+            processText();
+            drawCanvas(); 
+        });
+    </script>
+</body>
+</html>
